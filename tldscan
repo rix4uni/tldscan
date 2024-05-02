@@ -3,48 +3,35 @@
 INPUT=$2
 
 quick() {
-	if [ ! -f "tld-list.txt" ]; then
-	    curl -s "https://www.iana.org/domains/root/db" | grep -oP '\.\w+(?=<\/a>)' | unew -q tld-list.txt
+	# download tld_list.txt if not exist
+	if [ ! -f "tld_list.txt" ]; then
+	    curl -s "https://www.iana.org/domains/root/db" | grep -oP '\.\w+(?=<\/a>)' >> tld_list.txt
 	fi
-	for tld in $(cat tld-list.txt);do echo "$INPUT$tld" | filter-resolved | unew -q tldscan_output.txt;done
+	for tld in $(cat tld_list.txt);do echo "$INPUT$tld" | filter-resolved >> "$INPUT"_tld.txt;done
 }
-
 
 verbose_mode() {
-	if [ ! -f "tld-list.txt" ]; then
-	    curl -s "https://www.iana.org/domains/root/db" | grep -oP '\.\w+(?=<\/a>)' | unew -q tld-list.txt
+	# download tld_list.txt if not exist
+	if [ ! -f "tld_list.txt" ]; then
+	    curl -s "https://www.iana.org/domains/root/db" | grep -oP '\.\w+(?=<\/a>)' >> tld_list.txt
 
-	    # Read the contents of the tld-list.txt file into an array
-	    mapfile -t tlds < tld-list.txt
-
-	    # Iterate over each TLD
-	    for ((i=0; i<${#tlds[@]}; i++)); do
-	        for ((j=0; j<${#tlds[@]}; j++)); do
-	            # Skip if the same TLD is being concatenated
-	            if [ $i -eq $j ]; then
-	                continue
-	            fi
-	            # Output the combination of TLDs
-	            echo "${tlds[i]}${tlds[j]}" | unew -q tld-list.txt
-	        done
-	    done
 	fi
-	for tld in $(cat tld-list.txt);do echo "$INPUT$tld" | filter-resolved | unew -q tldscan_output.txt;done
+	python3 main.py
+	cat tld_list.txt >> tld_combinations.txt
+	for tld in $(cat tld_combinations.txt);do echo "$INPUT$tld" | filter-resolved >> "$INPUT"_tld.txt;done
 }
-
 
 showhelp(){
 	echo -e "Quick-Mode Run:"
-    echo -e "   tldscan -q google"
+    echo -e "   bash tldscan -q google"
     echo -e ""
     echo -e "Verbose-Mode Run:"
-    echo -e "   tldscan -v google"
+    echo -e "   bash tldscan -v google"
     echo -e ""
     echo -e "Show Help:"
-    echo -e "   tldscan -h"
+    echo -e "   bash tldscan -h"
     echo -e ""
 }
-
 
 # Check the function argument and call the respective function
 if [ "$1" == "-q" ]; then
