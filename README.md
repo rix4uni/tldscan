@@ -30,5 +30,10 @@ google.ad
 google.ae
 
 #bash tldscan -v google
-
+google.org.ag
+google.org.amsterdam
+google.org.app
+google.org.arab
+google.org.aw
+google.org.best
 ```
