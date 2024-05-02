@@ -5,7 +5,7 @@ INPUT=$2
 quick() {
 	# download tld_list.txt if not exist
 	if [ ! -f "tld_list.txt" ]; then
-	    curl -s "https://www.iana.org/domains/root/db" | grep -oP '\.\w+(?=<\/a>)' >> tld_list.txt
+	    curl -s "https://www.iana.org/domains/root/db" | grep '<span class="domain tld"><a href="/domains/root/db/' | grep -oP '\.\w+(?=<\/a>)' >> tld_list.txt
 	fi
 	for tld in $(cat tld_list.txt);do echo "$INPUT$tld" | filter-resolved >> "$INPUT"_tld.txt;done
 }
@@ -13,7 +13,7 @@ quick() {
 verbose_mode() {
 	# download tld_list.txt if not exist
 	if [ ! -f "tld_list.txt" ]; then
-	    curl -s "https://www.iana.org/domains/root/db" | grep -oP '\.\w+(?=<\/a>)' >> tld_list.txt
+	    curl -s "https://www.iana.org/domains/root/db" | grep '<span class="domain tld"><a href="/domains/root/db/' | grep -oP '\.\w+(?=<\/a>)' >> tld_list.txt
 
 	fi
 	python3 main.py
