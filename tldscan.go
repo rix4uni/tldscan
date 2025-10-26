@@ -6,68 +6,97 @@ import (
     "net"
     "os"
     "os/exec"
+    "os/user"
+    "path/filepath"
     "strings"
     "sync"
 
+    "github.com/rix4uni/tldscan/banner"
     "github.com/spf13/pflag"
 )
 
-// prints the version message
-const version = "0.0.2"
-
-func printVersion() {
-	fmt.Printf("Current tldscan version %s\n", version)
+// getConfigDir returns the config directory for tldscan
+func getConfigDir() (string, error) {
+    usr, err := user.Current()
+    if err != nil {
+        return "", err
+    }
+    configDir := filepath.Join(usr.HomeDir, ".config", "tldscan")
+    return configDir, nil
 }
 
-// Prints the Colorful banner
-func printBanner() {
-	banner := `
-   __   __     __                        
-  / /_ / /____/ /_____ _____ ____ _ ____ 
- / __// // __  // ___// ___// __  // __ \
-/ /_ / // /_/ /(__  )/ /__ / /_/ // / / /
-\__//_/ \__,_//____/ \___/ \__,_//_/ /_/ 
-`
-fmt.Printf("%s\n%50s\n\n", banner, "Current tldscan version "+version)
+// ensureConfigDir creates the config directory if it doesn't exist
+func ensureConfigDir() error {
+    configDir, err := getConfigDir()
+    if err != nil {
+        return err
+    }
+    return os.MkdirAll(configDir, 0755)
+}
+
+// getWordlistPath returns the full path for a wordlist
+func getWordlistPath(filename string) (string, error) {
+    configDir, err := getConfigDir()
+    if err != nil {
+        return "", err
+    }
+    return filepath.Join(configDir, filename), nil
 }
 
 func main() {
     concurrency := pflag.IntP("concurrency", "c", 50, "Set the concurrency level")
     orgName := pflag.String("org", "", "Organization name to prepend to domains")
-    wordlist := pflag.StringP("wordlist", "w", "", "Path to the wordlist file")
+    wordlistType := pflag.StringP("wordlist", "w", "small", "Wordlist type to use (small or large)")
     outputFilePath := pflag.StringP("output", "o", "", "File path to save resolved domains")
-    silent := pflag.Bool("silent", false, "silent mode.")
+    silent := pflag.Bool("silent", false, "Silent mode.")
     version := pflag.Bool("version", false, "Print the version of the tool and exit.")
-    verbose := pflag.BoolP("verbose", "v", false, "Enable verbose output with IP addresses")
+    verbose := pflag.BoolP("verbose", "v", false, "Enable verbose output for debugging purposes.")
     pflag.Parse()
 
-    // Print version and exit if -version flag is provided
-	if *version {
-		printBanner()
-		printVersion()
-		return
-	}
+    if *version {
+        banner.PrintBanner()
+        banner.PrintVersion()
+        return
+    }
 
-	// Don't Print banner if -silnet flag is provided
-	if !*silent {
-		printBanner()
-	}
+    if !*silent {
+        banner.PrintBanner()
+    }
 
-    // Check if tld-small-wordlist.txt exists
-    if _, err := os.Stat("tld-small-wordlist.txt"); os.IsNotExist(err) {
-        fmt.Println("tld-small-wordlist.txt does not exist. Downloading TLDs...")
+    // Ensure config directory exists
+    if err := ensureConfigDir(); err != nil {
+        fmt.Fprintf(os.Stderr, "failed to create config directory: %s\n", err)
+        return
+    }
 
-        // Download TLDs and generate combinations
-        if err := downloadTLDList(); err != nil {
-            fmt.Println("Error downloading tld-small-wordlist.txt:", err)
+    // Determine which wordlist to use
+    var wordlistFile string
+    switch *wordlistType {
+    case "small":
+        wordlistFile = "tld-small-wordlist.txt"
+    case "large":
+        wordlistFile = "tld-large-wordlist.txt"
+    default:
+        fmt.Fprintf(os.Stderr, "invalid wordlist type: %s (must be 'small' or 'large')\n", *wordlistType)
+        return
+    }
+
+    wordlistPath, err := getWordlistPath(wordlistFile)
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "failed to get wordlist path: %s\n", err)
+        return
+    }
+
+    // Check if the selected wordlist exists, if not, download/generate it
+    if _, err := os.Stat(wordlistPath); os.IsNotExist(err) {
+        if *verbose {
+            fmt.Printf("%s does not exist. Setting up wordlists...\n", wordlistFile)
+        }
+        // Download TLDs and generate combinations if needed
+        if err := downloadTLDList(*verbose); err != nil {
+            fmt.Fprintf(os.Stderr, "Error setting up wordlists: %s\n", err)
             return
         }
-        if err := generateCombinations(); err != nil {
-            fmt.Println("Error generating TLD combinations:", err)
-            return
-        }
-    } else {
-        fmt.Println("tld-small-wordlist.txt exists. Proceeding with domain resolution...")
     }
 
     jobs := make(chan string)
@@ -97,14 +126,14 @@ func main() {
                 }
 
                 var resolvedDomain string
-		        if *verbose {
-		            resolvedDomain = fmt.Sprintf("%s -> %s", domain, addr.IP.String()) // Verbose output
-		        } else {
-		            resolvedDomain = domain // Simple output
-		        }
+                if *verbose {
+                    resolvedDomain = fmt.Sprintf("%s -> %s", domain, addr.IP.String()) // Verbose output
+                } else {
+                    resolvedDomain = domain // Simple output
+                }
 
-		        // Print the resolved domain to the console
-		        fmt.Println(resolvedDomain)
+                // Print the resolved domain to the console
+                fmt.Println(resolvedDomain)
 
                 // If output file is specified, write the result to the file
                 if outputFile != nil {
@@ -117,38 +146,56 @@ func main() {
         }()
     }
 
-    // Read from the wordlist or stdin
-    if *wordlist != "" {
-        file, err := os.Open(*wordlist)
-        if err != nil {
-            fmt.Fprintf(os.Stderr, "failed to open wordlist file: %s\n", err)
-            return
-        }
-        defer file.Close()
+    // Read wordlist into memory
+    wordlistFileHandle, err := os.Open(wordlistPath)
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "failed to open wordlist file: %s\n", err)
+        return
+    }
+    defer wordlistFileHandle.Close()
 
-        sc := bufio.NewScanner(file)
-        for sc.Scan() {
-            domain := sc.Text()
-            if *orgName != "" {
-                domain = *orgName + domain
+    var tlds []string
+    scanner := bufio.NewScanner(wordlistFileHandle)
+    for scanner.Scan() {
+        tlds = append(tlds, scanner.Text())
+    }
+    if err := scanner.Err(); err != nil {
+        fmt.Fprintf(os.Stderr, "failed to read wordlist: %s\n", err)
+        return
+    }
+
+    // Check if we're reading from stdin
+    stat, _ := os.Stdin.Stat()
+    hasStdin := (stat.Mode() & os.ModeCharDevice) == 0
+
+    if hasStdin {
+        // Read base domains from stdin and combine with TLDs
+        stdinScanner := bufio.NewScanner(os.Stdin)
+        for stdinScanner.Scan() {
+            baseDomain := strings.TrimSpace(stdinScanner.Text())
+            if baseDomain == "" {
+                continue
             }
-            jobs <- domain
+            for _, tld := range tlds {
+                domain := baseDomain + tld
+                jobs <- domain
+            }
         }
-        if err := sc.Err(); err != nil {
-            fmt.Fprintf(os.Stderr, "failed to read wordlist: %s\n", err)
+        if err := stdinScanner.Err(); err != nil {
+            fmt.Fprintf(os.Stderr, "failed to read stdin: %s\n", err)
+        }
+    } else if *orgName != "" {
+        // Use org name with TLDs
+        for _, tld := range tlds {
+            domain := *orgName + tld
+            jobs <- domain
         }
     } else {
-        sc := bufio.NewScanner(os.Stdin)
-        for sc.Scan() {
-            domain := sc.Text()
-            if *orgName != "" {
-                domain = *orgName + domain
-            }
-            jobs <- domain
-        }
-        if err := sc.Err(); err != nil {
-            fmt.Fprintf(os.Stderr, "failed to read input: %s\n", err)
-        }
+        fmt.Fprintf(os.Stderr, "error: either provide --org flag or pipe input via stdin\n")
+        fmt.Fprintf(os.Stderr, "usage examples:\n")
+        fmt.Fprintf(os.Stderr, "  tldscan --org google --wordlist small\n")
+        fmt.Fprintf(os.Stderr, "  echo 'google' | tldscan --wordlist small\n")
+        return
     }
 
     close(jobs)
@@ -156,21 +203,48 @@ func main() {
 }
 
 // Function to download tld-small-wordlist.txt using curl
-func downloadTLDList() error {
-    cmd := exec.Command("bash", "-c", `curl -s "https://www.iana.org/domains/root/db" | grep '<span class="domain tld"><a href="/domains/root/db/' | grep -oP '\.\w+(?=<\/a>)' | unew -q tld-small-wordlist.txt`)
+func downloadTLDList(verbose bool) error {
+    configDir, err := getConfigDir()
+    if err != nil {
+        return fmt.Errorf("failed to get config directory: %w", err)
+    }
+
+    smallWordlistPath := filepath.Join(configDir, "tld-small-wordlist.txt")
+    
+    if verbose {
+        fmt.Println("Downloading TLD list...")
+    }
+    
+    cmd := exec.Command("bash", "-c", `curl -s "https://www.iana.org/domains/root/db" | grep '<span class="domain tld"><a href="/domains/root/db/' | grep -oP '\.\w+(?=<\/a>)' | unew -q `+smallWordlistPath)
     if err := cmd.Run(); err != nil {
         return fmt.Errorf("failed to run command: %w", err)
     }
 
-    fmt.Println("TLDs saved to tld-small-wordlist.txt")
+    if verbose {
+        fmt.Printf("TLDs saved to %s\n", smallWordlistPath)
+    }
+    
+    // Generate large wordlist after downloading small one
+    if err := generateCombinations(verbose); err != nil {
+        return fmt.Errorf("failed to generate combinations: %w", err)
+    }
+    
     return nil
 }
 
 // Function to generate TLD combinations
-func generateCombinations() error {
-    file, err := os.Open("tld-small-wordlist.txt")
+func generateCombinations(verbose bool) error {
+    configDir, err := getConfigDir()
     if err != nil {
-        return fmt.Errorf("Error opening file: %w", err)
+        return fmt.Errorf("failed to get config directory: %w", err)
+    }
+
+    smallWordlistPath := filepath.Join(configDir, "tld-small-wordlist.txt")
+    largeWordlistPath := filepath.Join(configDir, "tld-large-wordlist.txt")
+
+    file, err := os.Open(smallWordlistPath)
+    if err != nil {
+        return fmt.Errorf("error opening file: %w", err)
     }
     defer file.Close()
 
@@ -180,19 +254,22 @@ func generateCombinations() error {
         tlds = append(tlds, scanner.Text())
     }
     if err := scanner.Err(); err != nil {
-        return fmt.Errorf("Error reading file: %w", err)
+        return fmt.Errorf("error reading file: %w", err)
     }
 
-    outputFile := "tld-large-wordlist.txt"
-    outfile, err := os.Create(outputFile)
+    outfile, err := os.Create(largeWordlistPath)
     if err != nil {
-        return fmt.Errorf("Error creating output file: %w", err)
+        return fmt.Errorf("error creating output file: %w", err)
     }
     defer outfile.Close()
 
     var wg sync.WaitGroup
     chunkSize := 1000
     builder := &strings.Builder{}
+
+    if verbose {
+        fmt.Println("Generating TLD combinations...")
+    }
 
     for i := 0; i < len(tlds); i++ {
         for j := 0; j < len(tlds); j++ {
@@ -227,8 +304,13 @@ func generateCombinations() error {
 
     wg.Wait()
 
-    appendToOutput(outputFile, "tld-small-wordlist.txt")
-    fmt.Println("Combinations saved to", outputFile)
+    // Append small wordlist to large wordlist
+    appendToOutput(largeWordlistPath, smallWordlistPath)
+    
+    if verbose {
+        fmt.Printf("Combinations saved to %s\n", largeWordlistPath)
+    }
+    
     return nil
 }
 
