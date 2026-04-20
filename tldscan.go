@@ -210,25 +210,77 @@ func downloadTLDList(verbose bool) error {
     }
 
     smallWordlistPath := filepath.Join(configDir, "tld-small-wordlist.txt")
-    
+
     if verbose {
         fmt.Println("Downloading TLD list...")
     }
-    
-    cmd := exec.Command("bash", "-c", `curl -s "https://www.iana.org/domains/root/db" | grep '<span class="domain tld"><a href="/domains/root/db/' | grep -oP '\.\w+(?=<\/a>)' | unew -q `+smallWordlistPath)
-    if err := cmd.Run(); err != nil {
-        return fmt.Errorf("failed to run command: %w", err)
+
+    // Download the IANA TLD database page
+    cmd := exec.Command("curl", "-s", "https://www.iana.org/domains/root/db")
+    output, err := cmd.Output()
+    if err != nil {
+        return fmt.Errorf("failed to download TLD list: %w", err)
+    }
+
+    // Parse TLDs from HTML
+    var tlds []string
+    content := string(output)
+
+    // Look for TLDs in the HTML pattern: <span class="domain tld"><a href="/domains/root/db/...
+    const spanStart = `<span class="domain tld"><a href="/domains/root/db/`
+    for {
+        idx := strings.Index(content, spanStart)
+        if idx == -1 {
+            break
+        }
+        content = content[idx+len(spanStart):]
+
+        // Find the next '>' which ends the <a> tag
+        gtIdx := strings.Index(content, ">")
+        if gtIdx == -1 {
+            continue
+        }
+
+        // Extract TLD (starts with .)
+        content = content[gtIdx+1:]
+        ltIdx := strings.Index(content, "<")
+        if ltIdx == -1 {
+            continue
+        }
+
+        tld := strings.TrimSpace(content[:ltIdx])
+        if strings.HasPrefix(tld, ".") && tld != "." {
+            tlds = append(tlds, tld)
+        }
+    }
+
+    if len(tlds) == 0 {
+        return fmt.Errorf("no TLDs found in downloaded content")
+    }
+
+    // Write TLDs to file
+    file, err := os.Create(smallWordlistPath)
+    if err != nil {
+        return fmt.Errorf("failed to create wordlist file: %w", err)
+    }
+    defer file.Close()
+
+    for _, tld := range tlds {
+        _, err := file.WriteString(tld + "\n")
+        if err != nil {
+            return fmt.Errorf("failed to write to wordlist file: %w", err)
+        }
     }
 
     if verbose {
-        fmt.Printf("TLDs saved to %s\n", smallWordlistPath)
+        fmt.Printf("TLDs saved to %s (%d TLDs)\n", smallWordlistPath, len(tlds))
     }
-    
+
     // Generate large wordlist after downloading small one
     if err := generateCombinations(verbose); err != nil {
         return fmt.Errorf("failed to generate combinations: %w", err)
     }
-    
+
     return nil
 }
 

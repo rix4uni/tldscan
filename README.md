@@ -9,9 +9,9 @@ go install github.com/rix4uni/tldscan@latest
 
 ## Download prebuilt binaries
 ```
-wget https://github.com/rix4uni/tldscan/releases/download/v0.0.3/tldscan-linux-amd64-0.0.3.tgz
-tar -xvzf tldscan-linux-amd64-0.0.3.tgz
-rm -rf tldscan-linux-amd64-0.0.3.tgz
+wget https://github.com/rix4uni/tldscan/releases/download/v0.0.4/tldscan-linux-amd64-0.0.4.tgz
+tar -xvzf tldscan-linux-amd64-0.0.4.tgz
+rm -rf tldscan-linux-amd64-0.0.4.tgz
 mv tldscan ~/go/bin/tldscan
 ```
 Or download [binary release](https://github.com/rix4uni/tldscan/releases) for your platform.
