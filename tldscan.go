@@ -215,43 +215,27 @@ func downloadTLDList(verbose bool) error {
         fmt.Println("Downloading TLD list...")
     }
 
-    // Download the IANA TLD database page
-    cmd := exec.Command("curl", "-s", "https://www.iana.org/domains/root/db")
+    // Download the IANA TLD list
+    cmd := exec.Command("curl", "-s", "https://data.iana.org/TLD/tlds-alpha-by-domain.txt")
     output, err := cmd.Output()
     if err != nil {
         return fmt.Errorf("failed to download TLD list: %w", err)
     }
 
-    // Parse TLDs from HTML
+    // Parse TLDs from plain text
     var tlds []string
-    content := string(output)
-
-    // Look for TLDs in the HTML pattern: <span class="domain tld"><a href="/domains/root/db/...
-    const spanStart = `<span class="domain tld"><a href="/domains/root/db/`
-    for {
-        idx := strings.Index(content, spanStart)
-        if idx == -1 {
-            break
-        }
-        content = content[idx+len(spanStart):]
-
-        // Find the next '>' which ends the <a> tag
-        gtIdx := strings.Index(content, ">")
-        if gtIdx == -1 {
+    scanner := bufio.NewScanner(strings.NewReader(string(output)))
+    for scanner.Scan() {
+        line := strings.TrimSpace(scanner.Text())
+        if line == "" || strings.HasPrefix(line, "#") {
             continue
         }
+        tld := "." + strings.ToLower(line)
+        tlds = append(tlds, tld)
+    }
 
-        // Extract TLD (starts with .)
-        content = content[gtIdx+1:]
-        ltIdx := strings.Index(content, "<")
-        if ltIdx == -1 {
-            continue
-        }
-
-        tld := strings.TrimSpace(content[:ltIdx])
-        if strings.HasPrefix(tld, ".") && tld != "." {
-            tlds = append(tlds, tld)
-        }
+    if err := scanner.Err(); err != nil {
+        return fmt.Errorf("failed to parse TLD list: %w", err)
     }
 
     if len(tlds) == 0 {

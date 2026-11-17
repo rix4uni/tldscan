@@ -9,9 +9,9 @@ go install github.com/rix4uni/tldscan@latest
 
 ## Download prebuilt binaries
 ```
-wget https://github.com/rix4uni/tldscan/releases/download/v0.0.4/tldscan-linux-amd64-0.0.4.tgz
-tar -xvzf tldscan-linux-amd64-0.0.4.tgz
-rm -rf tldscan-linux-amd64-0.0.4.tgz
+wget https://github.com/rix4uni/tldscan/releases/download/v0.0.5/tldscan-linux-amd64-0.0.5.tgz
+tar -xvzf tldscan-linux-amd64-0.0.5.tgz
+rm -rf tldscan-linux-amd64-0.0.5.tgz
 mv tldscan ~/go/bin/tldscan
 ```
 Or download [binary release](https://github.com/rix4uni/tldscan/releases) for your platform.
@@ -39,7 +39,7 @@ Usage of tldscan:
 Single URL:
 ```yaml
 # Using stdin with small wordlist
-$ echo "google" | tldscan --wordlist small
+echo "google" | tldscan --wordlist small
 
 google.org
 google.ac
@@ -47,7 +47,7 @@ google.ad
 google.ae
 
 # Using stdin with large wordlist
-$ echo "google" | tldscan --wordlist large
+echo "google" | tldscan --wordlist large
 google.org.ag
 google.org.amsterdam
 google.org.app
@@ -58,7 +58,7 @@ google.org.best
 
 Multiple URLs:
 ```yaml
-$ cat org.txt | tldscan --wordlist small
+cat org.txt | tldscan --wordlist small
 
 google.org
 google.ac

@@ -5,7 +5,7 @@ import (
 )
 
 // prints the version message
-const version = "v0.0.4"
+const version = "v0.0.5"
 
 func PrintVersion() {
 	fmt.Printf("Current tldscan version %s\n", version)
@@ -20,5 +20,5 @@ func PrintBanner() {
 / /_ / // /_/ /(__  )/ /__ / /_/ // / / /
 \__//_/ \__,_//____/ \___/ \__,_//_/ /_/ 
 `
-    fmt.Printf("%s\n%50s\n\n", banner, "Current tldscan version "+version)
+	fmt.Printf("%s\n%50s\n\n", banner, "Current tldscan version "+version)
 }
