@@ -18,7 +18,7 @@ Or download [binary release](https://github.com/rix4uni/tldscan/releases) for yo
 
 ## Compile from source
 ```
-git clone --depth 1 github.com/rix4uni/tldscan.git
+git clone --depth 1 https://github.com/rix4uni/tldscan.git
 cd tldscan; go install
 ```
 
